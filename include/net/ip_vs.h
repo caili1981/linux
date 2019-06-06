@@ -610,6 +610,7 @@ struct ip_vs_dest_user_kern {
  * The information about the virtual service offered to the net and the
  * forwarding entries.
  */
+/* ip_vs_service 就代表一个对外的服务 */
 struct ip_vs_service {
 	struct hlist_node	s_list;   /* for normal service table */
 	struct hlist_node	f_list;   /* for fwmark-based service table */

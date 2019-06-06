@@ -1925,6 +1925,7 @@ ip_vs_in(struct netns_ipvs *ipvs, unsigned int hooknum, struct sk_buff *skb, int
 	/*
 	 * Check if the packet belongs to an existing connection entry
 	 */
+    /* 查询现有session */
 	cp = pp->conn_in_get(ipvs, af, skb, &iph);
 
 	conn_reuse_mode = sysctl_conn_reuse_mode(ipvs);
@@ -1961,6 +1962,7 @@ ip_vs_in(struct netns_ipvs *ipvs, unsigned int hooknum, struct sk_buff *skb, int
 	if (unlikely(!cp)) {
 		int v;
 
+        /* 如果没有session，则创建新的sess */
 		if (!ip_vs_try_to_schedule(ipvs, af, skb, pd, &v, &cp, &iph))
 			return v;
 	}
@@ -1989,6 +1991,7 @@ ip_vs_in(struct netns_ipvs *ipvs, unsigned int hooknum, struct sk_buff *skb, int
 	}
 
 	ip_vs_in_stats(cp, skb);
+    /* 更新各个协议的状态 */
 	ip_vs_set_state(cp, IP_VS_DIR_INPUT, skb, pd);
 	if (cp->packet_xmit)
 		ret = cp->packet_xmit(skb, cp, pp, &iph);
@@ -2122,30 +2125,40 @@ ip_vs_forward_icmp_v6(void *priv, struct sk_buff *skb,
 static const struct nf_hook_ops ip_vs_ops[] = {
 	/* After packet filtering, change source only for VS/NAT */
 	{
+        /* 为什么要改变src ??? */
+        /* s2c的响应报文目的地址是vip，会进入local_in */
 		.hook		= ip_vs_reply4,
 		.pf		= NFPROTO_IPV4,
 		.hooknum	= NF_INET_LOCAL_IN,
-		.priority	= NF_IP_PRI_NAT_SRC - 2,
+		.priority	= NF_IP_PRI_NAT_SRC - 2,  /* 数值越大，调用越后*/
+        /* 在做src_nat 之前，这样获得client的真实ip的可能性大，散列比较好 */
 	},
 	/* After packet filtering, forward packet through VS/DR, VS/TUN,
 	 * or VS/NAT(change destination), so that filtering rules can be
 	 * applied to IPVS. */
 	{
-		.hook		= ip_vs_remote_request4,
+        /* c2s报文的目的地址是vip，因此会进入LOCAL_IN */
+        /* 
+         * 1. 先调用ip_vs_reply4，如果报文是s2c响应报文, 直接走session.???貌似有点不太对.
+         * 2. 再调用ip_vs_request4, 如果报文不是s2c响应报文，则创建session
+         * 3. 反向报文来时会走NF_INET_FORWARD, ip_vs_reply4
+         */
+		.hook		= ip_vs_remote_request4, /* ip_vs_in */
 		.pf		= NFPROTO_IPV4,
 		.hooknum	= NF_INET_LOCAL_IN,
 		.priority	= NF_IP_PRI_NAT_SRC - 1,
 	},
 	/* Before ip_vs_in, change source only for VS/NAT */
 	{
-		.hook		= ip_vs_local_reply4,
+        /* 处理本地连接 */
+		.hook		= ip_vs_local_reply4,  /* ip_vs_out */
 		.pf		= NFPROTO_IPV4,
 		.hooknum	= NF_INET_LOCAL_OUT,
 		.priority	= NF_IP_PRI_NAT_DST + 1,
 	},
 	/* After mangle, schedule and forward local requests */
 	{
-		.hook		= ip_vs_local_request4,
+		.hook		= ip_vs_local_request4, /* ip_vs_in */
 		.pf		= NFPROTO_IPV4,
 		.hooknum	= NF_INET_LOCAL_OUT,
 		.priority	= NF_IP_PRI_NAT_DST + 2,
@@ -2160,6 +2173,7 @@ static const struct nf_hook_ops ip_vs_ops[] = {
 	},
 	/* After packet filtering, change source only for VS/NAT */
 	{
+        /* syn报文经过VS/NAT, 反方向回来的syn/ack报文会经过forward, 并做src_nat */
 		.hook		= ip_vs_reply4,
 		.pf		= NFPROTO_IPV4,
 		.hooknum	= NF_INET_FORWARD,

@@ -270,6 +270,10 @@ __ip_vs_conn_in_get(const struct ip_vs_conn_param *p)
 	unsigned int hash;
 	struct ip_vs_conn *cp;
 
+    /* 
+     * 注意，这是三元组进行hash，因为dport/daddr/vaddr/vport数量有限，
+     * 拿它作为hash的元素没有实际意义 
+     */
 	hash = ip_vs_conn_hashkey_param(p, false);
 
 	rcu_read_lock();
